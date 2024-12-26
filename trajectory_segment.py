@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
+
 @dataclass
 class TrajectorySegment:
     states: torch.Tensor  # (R, S_dim)
@@ -46,14 +47,18 @@ class Batcher:
         returns: torch.Tensor,
         n_mini_batches: int,
     ):
-        self.batch_size = (
-            seg.states.shape[0] * seg.states.shape[1]
-        )  # rollout_len * num_bots
+        # self.batch_size = (
+        #     seg.states.shape[0] * seg.states.shape[1]
+        # )  # rollout_len * num_bots
+        self.batch_size = seg.states.shape[0]
         self.mini_batch_size = int(self.batch_size // n_mini_batches)
+        # self.experiences = LearningBatch(
+        #     *Batcher.flatten(
+        #         (seg.states, seg.actions, seg.logprobs, advantages, returns)
+        #     )
+        # )
         self.experiences = LearningBatch(
-            *Batcher.flatten(
-                (seg.states, seg.actions, seg.logprobs, advantages, returns)
-            )
+            seg.states, seg.actions, seg.logprobs, advantages, returns
         )
 
     def shuffle(self):

@@ -38,27 +38,22 @@ class RandomAgent(IAction):
 class AgentPPO(nn.Module, IAction):
     def __init__(self, state_size, action_size, lr: float = 1e-4, weight_mul=1e-3):
         super().__init__()
-
-        def layer_init(layer, std=np.sqrt(2)):
-            torch.nn.init.orthogonal_(layer.weight, std)
-            torch.nn.init.constant_(layer.bias, 0.0)
-            layer.weight.data.mul_(weight_mul)
-            return layer
-
+        self.state_size = state_size
+        self.action_size = action_size
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(state_size, 32)),
+            nn.Linear(state_size, 32),
             nn.ReLU(),
-            layer_init(nn.Linear(32, 32)),
+            nn.Linear(32, 32),
             nn.ReLU(),
-            layer_init(nn.Linear(32, 1), std=1.0),
+            nn.Linear(32, 1),
         )
 
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(state_size, 32)),
+            nn.Linear(state_size, 32),
             nn.ReLU(),
-            layer_init(nn.Linear(32, 32)),
+            nn.Linear(32, 32),
             nn.ReLU(),
-            layer_init(nn.Linear(32, action_size), std=0.01),
+            nn.Linear(32, action_size),
         )
 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
@@ -67,14 +62,15 @@ class AgentPPO(nn.Module, IAction):
         self, states, action_mask=None
     ) -> torch.distributions.Distribution:
         states_tensor = torch.tensor(states, dtype=torch.float32)  # Add batch dimension
-        action_logits = self.actor(
-            states_tensor
-        )  # Get the logits from the actor network
 
         is_add_batch_dim = False
         if len(states_tensor.shape) == 1:
             is_add_batch_dim = True
             states_tensor = states_tensor.unsqueeze(0)  # Add batch dimension
+
+        action_logits = self.actor(
+            states_tensor
+        )  # Get the logits from the actor network
 
         # Apply action mask if provided
         if action_mask is not None:
@@ -83,7 +79,7 @@ class AgentPPO(nn.Module, IAction):
             if is_add_batch_dim:
                 action_mask = action_mask.unsqueeze(0)
 
-            action_logits = action_logits + (action_mask * -1e10)
+            action_logits = action_logits + ((1 - action_mask) * -1e10)
 
         # Create the Categorical distribution
         action_probs = torch.distributions.Categorical(logits=action_logits)
@@ -93,10 +89,11 @@ class AgentPPO(nn.Module, IAction):
     def sample_action(self, states, action_mask=None):
         probs = self.get_action_probs(states, action_mask)
         action = probs.sample()
-        return action, probs.log_prob(action).sum(1)
+        return action, probs.log_prob(action)
 
     @torch.no_grad()
     def act(self, state: np.array, action_mask=None):
+
         action, _ = self.sample_action(
             torch.from_numpy(state).unsqueeze(0), action_mask
         )
@@ -108,7 +105,7 @@ class AgentPPO(nn.Module, IAction):
 
     def eval_action(self, states, action):
         probs = self.get_action_probs(states)
-        return probs.log_prob(action).sum(1), probs.entropy().sum(1)
+        return probs.log_prob(action), probs.entropy()
 
     def learn(
         self,
@@ -135,9 +132,31 @@ class AgentPPO(nn.Module, IAction):
         L_ppo = L_actor + L_critic * vf_coeff
         self.optimizer.zero_grad()
         L_ppo.backward()
-        nn.utils.clip_grad_norm_(self.actor_mean.parameters(), max_grad_norm)
+        nn.utils.clip_grad_norm_(self.actor.parameters(), max_grad_norm)
         nn.utils.clip_grad_norm_(self.critic.parameters(), max_grad_norm)
         self.optimizer.step()
+
+    def save(self, file_path: str):
+        """
+        Save the model's state_dict to the given file path.
+        """
+        torch.save(self.state_dict(), file_path)
+        # print(f"Model saved to {file_path}")
+
+    def load(self, file_path: str):
+        """
+        Load the model's state_dict from the given file path.
+        """
+        state_dict = torch.load(file_path)
+        self.load_state_dict(state_dict)
+        # print(f"Model loaded from {file_path}")
+
+    def clone(self):
+        state_dict = self.state_dict()
+        new = AgentPPO(self.state_size, self.action_size)
+        new.load_state_dict(state_dict)
+        new.train(False)
+        return new
 
 
 # class AgentDQN:

@@ -191,6 +191,10 @@ class TicTacToe(Game):
     #         encoded_state = np.swapaxes(encoded_state, 0, 1)
 
     #     return encoded_state
+
     def get_encoded_single_state(self, state):
         return state.reshape(-1)
 
+    def get_encoded_states(self, states):
+        shape = states.shape
+        return states.reshape(shape[0], -1)
