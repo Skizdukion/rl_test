@@ -40,6 +40,7 @@ class AgentPPO(nn.Module, IAction):
         super().__init__()
         self.state_size = state_size
         self.action_size = action_size
+        self.eps = 0
         self.critic = nn.Sequential(
             nn.Linear(state_size, 32),
             nn.ReLU(),
@@ -91,8 +92,22 @@ class AgentPPO(nn.Module, IAction):
         action = probs.sample()
         return action, probs.log_prob(action)
 
+    def set_eps(self, eps):
+        self.eps = eps
+
     @torch.no_grad()
     def act(self, state: np.array, action_mask=None):
+
+        if random.random() < self.eps:
+            if action_mask is not None:
+                # Filter valid actions using the mask
+                valid_actions = np.where(action_mask == 1)[0]
+                if len(valid_actions) == 0:
+                    raise ValueError("No valid actions available.")
+                return np.random.choice(valid_actions)
+            else:
+                # If no mask is provided, choose a random action from the full range
+                return np.random.randint(0, len(state))
 
         action, _ = self.sample_action(
             torch.from_numpy(state).unsqueeze(0), action_mask

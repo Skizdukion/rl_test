@@ -28,9 +28,9 @@ class PPO:
         self,
         env: TicTacToe,
         agent: AgentPPO,
-        rollout_size=1_024,
-        n_update_epochs=4,
-        # mini_batch_size=64,
+        rollout_size=2_046,
+        n_update_epochs=8,
+        mini_batch_size=128,
         # gae_enabled=True,
     ):
         self.env = env
@@ -43,12 +43,24 @@ class PPO:
         self.state_size = env.get_state_size()
         self.rollout_size = rollout_size
         self.n_episode = 0
-        self.mini_batch_size = 64
+        self.mini_batch_size = mini_batch_size
+        self.opps = [RandomAgent()]
 
-    def train(self, train_length):
-        opps = [RandomAgent()]
-        for i in range(train_length):
-            segment = self.collect_trajectory_segment(opps)
+    def add_opp(self, opp_filepath):
+        opp_agent = AgentPPO(self.state_size, self.action_size)
+        opp_agent.load(opp_filepath)
+        opp_agent.eval()
+        opp_agent.set_eps = 0.1
+        self.opps.append(opp_agent)
+
+    def train(self, train_length, preload_filepath=None):
+
+        if preload_filepath is not None:
+            self.agent.load(preload_filepath)
+            self.opps.append(self.agent.clone())
+
+        for i in range(1, train_length + 1):
+            segment = self.collect_trajectory_segment(self.opps)
             encode_state = self.env.get_encoded_single_state(segment.next_start_state)
             next_return = self.agent.get_value(encode_state)
             advantages, returns = basic_advantages_and_returns(segment, next_return)
@@ -56,13 +68,17 @@ class PPO:
             batcher = Batcher(segment, advantages, returns, self.mini_batch_size)
             for _ in range(self.n_update_epochs):
                 for mini_batch in batcher.shuffle():
-                    self.agent.learn(mini_batch)
+                    self.agent.learn(mini_batch, 0.1)
 
             if i % 5 == 0:
                 total_reward = segment.rewards.sum()
                 print(f"Trainning checkpoint rewards: {total_reward}")
-                self.agent.save(f"checkpoint/{i}.pt")
-                opps.append(self.agent.clone())
+                if i % 10 == 0:
+                    self.agent.save(f"checkpoint/{i}.pt")
+
+                clone_agent = self.agent.clone()
+                clone_agent.set_eps = 0.1
+                self.opps.append(self.agent.clone())
 
             # total_reward = segment.rewards.sum()
             # print(f'Trainning checkpoint rewards: {total_reward}')
@@ -71,7 +87,13 @@ class PPO:
             # if total_reward > 50:
             #     break
 
-    def collect_trajectory_segment(self, opps: IAction):
+    def random_agent(self, opps: list[IAction]):
+        if random.random() < 0.5:
+            return opps[len(opps) - 1]
+        else:
+            return random.choice(opps)
+
+    def collect_trajectory_segment(self, opps: list[IAction]):
         start_state = self.env.get_initial_state()
 
         s_states = np.zeros(
@@ -109,7 +131,7 @@ class PPO:
                 )
 
             if is_new_game:
-                opp = random.choice(opps)
+                opp = self.random_agent(opps)
 
             cur_state = self.env.reserve_state(next_state)
             cur_player_index += 1
@@ -145,15 +167,39 @@ class PPO:
         reward, terminate = self.env.get_value_and_terminated(next_state, action)
 
         if not is_new_game:
-            s_rewards[step] = -reward
+            s_rewards[step] = 0
             s_dones[step] = terminate
             is_new_game = False
             if terminate:
+                s_rewards[step] = self.modify_rewards_at_terminal(reward, False)
                 next_state = self.env.get_initial_state()
                 is_new_game = True
             return step + 1, next_state, is_new_game
         else:
             return step, next_state, False
+
+    def modify_rewards_at_terminal(self, reward, is_agent):
+        modify_reward = reward
+
+        if reward == 1:
+            if is_agent:
+                modify_reward = 2
+            else:
+                modify_reward = -2
+
+        if reward == 0:
+            if is_agent:
+                modify_reward = 1
+            else:
+                modify_reward = 1
+
+        if reward == -1:
+            if is_agent:
+                modify_reward = -2
+            else:
+                modify_reward = 2
+
+        return modify_reward
 
     def player_turn(
         self,
@@ -185,7 +231,7 @@ class PPO:
             s_actions[step] = action
             s_logprobs[step] = logprob
             s_values[step] = value
-            s_rewards[step] = reward
+            s_rewards[step] = self.modify_rewards_at_terminal(reward, True)
             s_dones[step] = True
             return step + 1, self.env.get_initial_state(), True
 
@@ -200,7 +246,11 @@ game = TicTacToe()
 
 ppo = PPO(game, AgentPPO(game.get_state_size(), game.action_size))
 
-ppo.train(200)
+ppo.add_opp("checkpoint/50.pt")
+ppo.add_opp("checkpoint/100.pt")
+ppo.add_opp("checkpoint/150.pt")
+
+ppo.train(200, "checkpoint/200.pt")
 
 # opps = [RandomAgent()]
 
