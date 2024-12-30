@@ -9,15 +9,16 @@ from trajectory_segment import Batcher, TrajectorySegment
 
 @torch.no_grad()
 def basic_advantages_and_returns(
-    segment: TrajectorySegment, next_return: torch.Tensor, gamma=0.99
+    segment: TrajectorySegment, next_return: torch.Tensor, gamma=0.9
 ):
     returns = torch.zeros_like(segment.rewards).to(DEVICE).detach()
     for t in reversed(range(len(segment))):
-        next_non_terminal = 1.0 - segment.dones[t]
-        # G_t = R_t + gamma * R_t+1 + gamma^2 * R_t+2 + ...
-        returns[t] = segment.rewards[t] + gamma * next_non_terminal * next_return
-        # Reset the next_return if an episode terminates half-way (per bot).
-        next_return = returns[t] * next_non_terminal
+        if segment.dones[t] == True:
+            returns[t] = segment.rewards[t]
+        else:
+            returns[t] = segment.rewards[t] + gamma * next_return
+
+        next_return = returns[t]
 
     advantages = returns - segment.values
     return advantages, returns
@@ -50,16 +51,18 @@ class PPO:
         opp_agent = AgentPPO(self.state_size, self.action_size)
         opp_agent.load(opp_filepath)
         opp_agent.eval()
-        opp_agent.set_eps = 0.1
+        # opp_agent.set_eps = 0.1
         self.opps.append(opp_agent)
 
-    def train(self, train_length, preload_filepath=None):
+    def train(self, train_length, preload_filepath=None, continue_train_index=0):
 
         if preload_filepath is not None:
             self.agent.load(preload_filepath)
             self.opps.append(self.agent.clone())
 
-        for i in range(1, train_length + 1):
+        for i in range(
+            continue_train_index + 1, continue_train_index + train_length + 1
+        ):
             segment = self.collect_trajectory_segment(self.opps)
             encode_state = self.env.get_encoded_single_state(segment.next_start_state)
             next_return = self.agent.get_value(encode_state)
@@ -68,16 +71,16 @@ class PPO:
             batcher = Batcher(segment, advantages, returns, self.mini_batch_size)
             for _ in range(self.n_update_epochs):
                 for mini_batch in batcher.shuffle():
-                    self.agent.learn(mini_batch, 0.1)
+                    self.agent.learn(mini_batch, 0.01)
 
             if i % 5 == 0:
                 total_reward = segment.rewards.sum()
                 print(f"Trainning checkpoint rewards: {total_reward}")
-                if i % 10 == 0:
+                if i % 100 == 0:
                     self.agent.save(f"checkpoint/{i}.pt")
 
-                clone_agent = self.agent.clone()
-                clone_agent.set_eps = 0.1
+                # clone_agent = self.agent.clone()
+                # clone_agent.set_eps = 0.1
                 self.opps.append(self.agent.clone())
 
             # total_reward = segment.rewards.sum()
@@ -185,7 +188,7 @@ class PPO:
             if is_agent:
                 modify_reward = 2
             else:
-                modify_reward = -2
+                modify_reward = -3
 
         if reward == 0:
             if is_agent:
@@ -195,7 +198,7 @@ class PPO:
 
         if reward == -1:
             if is_agent:
-                modify_reward = -2
+                modify_reward = -3
             else:
                 modify_reward = 2
 
@@ -246,11 +249,17 @@ game = TicTacToe()
 
 ppo = PPO(game, AgentPPO(game.get_state_size(), game.action_size))
 
-ppo.add_opp("checkpoint/50.pt")
 ppo.add_opp("checkpoint/100.pt")
-ppo.add_opp("checkpoint/150.pt")
+ppo.add_opp("checkpoint/200.pt")
+ppo.add_opp("checkpoint/300.pt")
+ppo.add_opp("checkpoint/400.pt")
+ppo.add_opp("checkpoint/500.pt")
+ppo.add_opp("checkpoint/600.pt")
+ppo.add_opp("checkpoint/700.pt")
+ppo.add_opp("checkpoint/800.pt")
+ppo.add_opp("checkpoint/900.pt")
 
-ppo.train(200, "checkpoint/200.pt")
+ppo.train(1000, "checkpoint/1000.pt", 1000)
 
 # opps = [RandomAgent()]
 
