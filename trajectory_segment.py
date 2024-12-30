@@ -5,14 +5,14 @@ import torch
 
 @dataclass
 class TrajectorySegment:
-    states: torch.Tensor  # (R, S_dim)
-    actions: torch.Tensor  # (R, A_dim)
-    logprobs: torch.Tensor  # (R, )
-    values: torch.Tensor  # (R,)
-    rewards: torch.Tensor  # (R,)
-    dones: torch.Tensor  # (R,)
+    states: torch.Tensor  # (M, R, S_dim)
+    actions: torch.Tensor  # (M, R)
+    logprobs: torch.Tensor  # (M, R)
+    values: torch.Tensor  # (M, R)
+    rewards: torch.Tensor  # (M, R)
+    dones: torch.Tensor  # (M, R)
 
-    next_start_state: torch.Tensor  # (1, S_dim)
+    next_start_state: torch.Tensor  # (M, S_dim)
 
     def __len__(self):
         return self.states.shape[0]
