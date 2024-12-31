@@ -1,5 +1,5 @@
-# from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
+# from concurrent.futures import ProcessPoolExecutor
 
 import random
 import numpy as np
@@ -181,7 +181,7 @@ class PPO:
             )
         )
 
-        with ProcessPoolExecutor(max_workers=self.num_bots) as executor:
+        with ThreadPoolExecutor(max_workers=self.num_bots) as executor:
             futures = []
             for bot_num in range(self.num_bots):
                 futures.append(
