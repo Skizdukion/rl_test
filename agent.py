@@ -62,7 +62,7 @@ class AgentPPO(nn.Module, IAction):
     def get_action_probs(
         self, states, action_mask=None
     ) -> torch.distributions.Distribution:
-        states_tensor = torch.tensor(states, dtype=torch.float32)  # Add batch dimension
+        states_tensor = torch.tensor(states, dtype=torch.float32).to(DEVICE)
 
         is_add_batch_dim = False
         if len(states_tensor.shape) == 1:
@@ -76,7 +76,7 @@ class AgentPPO(nn.Module, IAction):
         # Apply action mask if provided
         if action_mask is not None:
             # Set the logits of the masked actions to a very large negative number
-            action_mask = torch.tensor(action_mask)
+            action_mask = torch.tensor(action_mask).to(DEVICE)
             if is_add_batch_dim:
                 action_mask = action_mask.unsqueeze(0)
 
@@ -99,12 +99,14 @@ class AgentPPO(nn.Module, IAction):
     def act(self, state: np.array, action_mask=None):
 
         action, _ = self.sample_action(
-            torch.from_numpy(state).unsqueeze(0), action_mask
+            torch.from_numpy(state).unsqueeze(0).to(DEVICE), action_mask
         )
         return action.numpy()[0]
 
     def get_value(self, states):
-        states_tensor = torch.tensor(states, dtype=torch.float32).unsqueeze(0)
+        states_tensor = (
+            torch.tensor(states, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+        )
         return self.critic(states_tensor)
 
     def eval_action(self, states, action):
