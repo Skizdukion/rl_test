@@ -17,16 +17,16 @@ import time
 def basic_advantages_and_returns(
     segment: TrajectorySegment, next_return: torch.Tensor, gamma=0.9
 ):
-    returns = torch.zeros_like(segment.rewards).to(DEVICE).detach()
+    returns = torch.zeros_like(segment.rewards).detach()
 
     roll_out_size = segment.rewards.shape[1]
 
     for t in reversed(range(roll_out_size)):
-        is_terminal = 1 - segment.dones[:, t].to(DEVICE)
-        returns[:, t] = segment.rewards[:, t].to(DEVICE) + gamma * next_return * is_terminal
+        is_terminal = 1 - segment.dones[:, t]
+        returns[:, t] = segment.rewards[:, t] + gamma * next_return * is_terminal
         next_return = returns[:, t]
 
-    advantages = returns - segment.values.to(DEVICE)
+    advantages = returns - segment.values
     return advantages, returns
 
 
@@ -213,10 +213,10 @@ class PPO:
             .to(DEVICE)
             .float(),
             torch.from_numpy(s_actions).to(DEVICE).float(),
-            torch.from_numpy(s_logprobs).float(),
-            torch.from_numpy(s_values).float(),
-            torch.from_numpy(s_rewards).float(),
-            torch.from_numpy(s_dones).float(),
+            torch.from_numpy(s_logprobs).to(DEVICE).float(),
+            torch.from_numpy(s_values).to(DEVICE).float(),
+            torch.from_numpy(s_rewards).to(DEVICE).float(),
+            torch.from_numpy(s_dones).to(DEVICE).float(),
             next_start_state=s_next_states,
         )
 
