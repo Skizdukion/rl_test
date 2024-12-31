@@ -1,17 +1,11 @@
 from abc import ABC, abstractmethod
-import random
 import numpy as np
 import torch
-from env import Game
-from model import PolicyResnet, QResnet
 from trajectory_segment import LearningBatch
-from utils import soft_update_model_params
-from replay_buffer import ReplayBuffer
 from utils import DEVICE
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.nn as nn
-
 
 class IAction(ABC):
     @abstractmethod
@@ -58,6 +52,7 @@ class AgentPPO(nn.Module, IAction):
         )
 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        self.to(DEVICE)
 
     def get_action_probs(
         self, states, action_mask=None
