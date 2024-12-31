@@ -1,5 +1,4 @@
 # from concurrent.futures import ThreadPoolExecutor
-
 from concurrent.futures import ProcessPoolExecutor
 
 import random
@@ -370,10 +369,10 @@ if __name__ == "__main__":
     game = TicTacToe()
     ppo = PPO(game, AgentPPO(game.get_state_size(), game.action_size))
     ppo = PPO(game, AgentPPO(game.get_state_size(), game.action_size))
-    ppo.add_opp("checkpoint/v1.pt")
-    ppo.add_opp("checkpoint/v2.pt")
-    ppo.add_opp("checkpoint/v3.pt")
-    ppo.train(200, "checkpoint/v4.pt")
+    ppo.add_opp("checkpoints/v1.pt")
+    ppo.add_opp("checkpoints/v2.pt")
+    ppo.add_opp("checkpoints/v3.pt")
+    ppo.train(200, "checkpoints/v4.pt")
 
 
 # ppo.train(1000)
