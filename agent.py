@@ -96,7 +96,7 @@ class AgentPPO(nn.Module, IAction):
         action, _ = self.sample_action(
             torch.from_numpy(state).unsqueeze(0).to(DEVICE), action_mask
         )
-        return action.numpy()[0]
+        return action.cpu().numpy()[0]
 
     def get_value(self, states):
         states_tensor = (
