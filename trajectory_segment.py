@@ -50,16 +50,16 @@ class Batcher:
         # self.batch_size = (
         #     seg.states.shape[0] * seg.states.shape[1]
         # )  # rollout_len * num_bots
-        self.batch_size = seg.states.shape[0]
+        self.batch_size = seg.states.shape[0] * seg.states.shape[1]
         self.mini_batch_size = int(self.batch_size // n_mini_batches)
-        # self.experiences = LearningBatch(
-        #     *Batcher.flatten(
-        #         (seg.states, seg.actions, seg.logprobs, advantages, returns)
-        #     )
-        # )
         self.experiences = LearningBatch(
-            seg.states, seg.actions, seg.logprobs, advantages, returns
+            *Batcher.flatten(
+                (seg.states, seg.actions, seg.logprobs, advantages, returns)
+            )
         )
+        # self.experiences = LearningBatch(
+        #     seg.states, seg.actions, seg.logprobs, advantages, returns
+        # )
 
     def shuffle(self):
         indices = np.arange(self.batch_size)

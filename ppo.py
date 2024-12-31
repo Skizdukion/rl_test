@@ -1,4 +1,7 @@
-from concurrent.futures import ThreadPoolExecutor
+# from concurrent.futures import ThreadPoolExecutor
+
+from concurrent.futures import ProcessPoolExecutor
+
 import random
 import numpy as np
 import torch
@@ -6,7 +9,9 @@ from agent import AgentPPO, IAction, RandomAgent
 from env import TicTacToe
 from replay_buffer import DEVICE
 from trajectory_segment import Batcher, TrajectorySegment
-from multiprocessing import Pool
+
+# from multiprocessing import Pool
+import time
 
 
 @torch.no_grad()
@@ -14,13 +19,13 @@ def basic_advantages_and_returns(
     segment: TrajectorySegment, next_return: torch.Tensor, gamma=0.9
 ):
     returns = torch.zeros_like(segment.rewards).to(DEVICE).detach()
-    for t in reversed(range(len(segment))):
-        if segment.dones[t] == True:
-            returns[t] = segment.rewards[t]
-        else:
-            returns[t] = segment.rewards[t] + gamma * next_return
 
-        next_return = returns[t]
+    roll_out_size = segment.rewards.shape[1]
+
+    for t in reversed(range(roll_out_size)):
+        is_terminal = 1 - segment.dones[:, t]
+        returns[:, t] = segment.rewards[:, t] + gamma * next_return * is_terminal
+        next_return = returns[:, t]
 
     advantages = returns - segment.values
     return advantages, returns
@@ -56,10 +61,10 @@ class PPO:
         self,
         env: TicTacToe,
         agent: AgentPPO,
-        rollout_size=2_046,
+        rollout_size=64,
         n_update_epochs=8,
-        mini_batch_size=128,
-        num_envs=4,
+        mini_batch_size=256,
+        num_envs=32,
         # gae_enabled=True,
     ):
         self.env = env
@@ -90,7 +95,9 @@ class PPO:
         for i in range(
             continue_train_index + 1, continue_train_index + train_length + 1
         ):
+            start_time = time.time()
             segment = self.collect_trajectory_segment()
+
             encode_state = self.env.get_encoded_states(segment.next_start_state)
             next_return = self.agent.get_value(encode_state).view(-1)
             advantages, returns = basic_advantages_and_returns(segment, next_return)
@@ -100,51 +107,52 @@ class PPO:
                 for mini_batch in batcher.shuffle():
                     self.agent.learn(mini_batch, 0.01)
 
-            if i % 20 == 0:
-                total_reward = segment.rewards.sum()
-                print(f"Trainning checkpoint rewards: {total_reward}")
-                self.checkpoint_log(1000)
-                if i % 100 == 0:
-                    self.agent.save(f"checkpoint/{i}.pt")
-
+            if i % 10 == 0:
                 self.opps.append(self.agent.clone())
 
-    def checkpoint_log(self, game_test_len=1000):
-        random_agent = RandomAgent()
-        result = 0
-        for _ in range(game_test_len):
-            result += self.simulate_game(self.agent, random_agent, self.env)
-        print(f"Rewards {result} / {game_test_len}")
-        return result / game_test_len
+            if i % 50 == 0:
+                self.agent.save(f"checkpoint/{i}.pt")
 
-    def simulate_game(agent: AgentPPO, opp: RandomAgent, env: TicTacToe):
-        cur_player_index = np.random.randint(0, 2)
-        state = env.get_initial_state()
+            end_time = time.time()
 
-        while True:
-            cur_player_index = cur_player_index % 2
-            if cur_player_index == 0:
-                availalbe_action = env.get_valid_moves(state)
-                action = agent.act(
-                    env.get_encoded_single_state(state), availalbe_action
-                )
-                next_state = env.get_next_state(state, action)
-                reward, is_terminated = env.get_value_and_terminated(next_state, action)
+            print(f"Time taken for epoch {i}: {end_time - start_time:.4f} seconds")
 
-                if is_terminated:
-                    return reward
+    # def checkpoint_log(self, game_test_len=1000):
+    #     random_agent = RandomAgent()
+    #     result = 0
+    #     for _ in range(game_test_len):
+    #         result += self.simulate_game(self.agent, random_agent, self.env)
+    #     print(f"Rewards {result} / {game_test_len}")
+    #     return result / game_test_len
 
-            else:
-                availalbe_action = env.get_valid_moves(state)
-                action = opp.act(state, availalbe_action)
-                next_state = env.get_next_state(state, action)
-                reward, is_terminated = env.get_value_and_terminated(next_state, action)
-                if is_terminated:
-                    return -reward
+    # def simulate_game(agent: AgentPPO, opp: RandomAgent, env: TicTacToe):
+    #     cur_player_index = np.random.randint(0, 2)
+    #     state = env.get_initial_state()
 
-            cur_player_index += 1
+    #     while True:
+    #         cur_player_index = cur_player_index % 2
+    #         if cur_player_index == 0:
+    #             availalbe_action = env.get_valid_moves(state)
+    #             action = agent.act(
+    #                 env.get_encoded_single_state(state), availalbe_action
+    #             )
+    #             next_state = env.get_next_state(state, action)
+    #             reward, is_terminated = env.get_value_and_terminated(next_state, action)
 
-            state = env.reserve_state(next_state)
+    #             if is_terminated:
+    #                 return reward
+
+    #         else:
+    #             availalbe_action = env.get_valid_moves(state)
+    #             action = opp.act(state, availalbe_action)
+    #             next_state = env.get_next_state(state, action)
+    #             reward, is_terminated = env.get_value_and_terminated(next_state, action)
+    #             if is_terminated:
+    #                 return -reward
+
+    #         cur_player_index += 1
+
+    #         state = env.reserve_state(next_state)
 
     def random_agent(self, opps: list[IAction]):
         if random.random() < 0.5:
@@ -174,7 +182,7 @@ class PPO:
             )
         )
 
-        with ThreadPoolExecutor(max_workers=self.num_bots) as executor:
+        with ProcessPoolExecutor(max_workers=self.num_bots) as executor:
             futures = []
             for bot_num in range(self.num_bots):
                 futures.append(
@@ -358,22 +366,17 @@ class PPO:
         return step, next_state, False
 
 
-game = TicTacToe()
+if __name__ == "__main__":
+    game = TicTacToe()
+    ppo = PPO(game, AgentPPO(game.get_state_size(), game.action_size))
+    ppo = PPO(game, AgentPPO(game.get_state_size(), game.action_size))
+    ppo.add_opp("checkpoint/v1.pt")
+    ppo.add_opp("checkpoint/v2.pt")
+    ppo.add_opp("checkpoint/v3.pt")
+    ppo.train(200, "checkpoint/v4.pt")
 
-ppo = PPO(game, AgentPPO(game.get_state_size(), game.action_size))
 
-# ppo.add_opp("checkpoint/100.pt")
-# ppo.add_opp("checkpoint/200.pt")
-# ppo.add_opp("checkpoint/300.pt")
-# ppo.add_opp("checkpoint/400.pt")
-# ppo.add_opp("checkpoint/500.pt")
-# ppo.add_opp("checkpoint/600.pt")
-# ppo.add_opp("checkpoint/700.pt")
-# ppo.add_opp("checkpoint/800.pt")
-# ppo.add_opp("checkpoint/900.pt")
-
-# ppo.train(1000, "checkpoint/1000.pt", 1000)
-ppo.train(1000)
+# ppo.train(1000)
 
 # opps = [RandomAgent()]
 
