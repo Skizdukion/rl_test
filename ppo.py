@@ -22,11 +22,11 @@ def basic_advantages_and_returns(
     roll_out_size = segment.rewards.shape[1]
 
     for t in reversed(range(roll_out_size)):
-        is_terminal = 1 - segment.dones[:, t]
-        returns[:, t] = segment.rewards[:, t] + gamma * next_return * is_terminal
+        is_terminal = 1 - segment.dones[:, t].to(DEVICE)
+        returns[:, t] = segment.rewards[:, t].to(DEVICE) + gamma * next_return * is_terminal
         next_return = returns[:, t]
 
-    advantages = returns - segment.values
+    advantages = returns - segment.values.to(DEVICE)
     return advantages, returns
 
 
